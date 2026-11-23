@@ -26,11 +26,16 @@
     <div class="header-brand">
       <div class="brand-badge">M5</div>
       <div>
-        <h1>ScanMuh5</h1>
+        <h1>ScanMuh5 <small id="app-version-tag" class="version-tag">v1.4</small></h1>
         <p>SMK Muhammadiyah 5 Karanganyar</p>
       </div>
     </div>
-    <span id="offline-badge" class="status-pill online">Online</span>
+    <div class="header-actions">
+      <button id="btn-force-refresh" class="btn-refresh" title="Clear Cache & Update Versi">
+        ↻ Update
+      </button>
+      <span id="offline-badge" class="status-pill online">Online</span>
+    </div>
   </header>
 
   <!-- Konten Utama SPA -->
@@ -64,7 +69,7 @@
         <div class="manual-scan-box">
           <label for="manual-nisn-input">Input Manual NISN (Cadangan)</label>
           <div class="input-row">
-            <input type="text" id="manual-nisn-input" placeholder="Ketik NISN siswa..." inputmode="numeric" />
+            <input type="text" id="manual-nisn-input" placeholder="Ketik NISN siswa (contoh: 0081000001)..." inputmode="numeric" />
             <button id="btn-manual-scan" class="btn btn-secondary">Catat</button>
           </div>
         </div>
@@ -114,10 +119,7 @@
         </div>
 
         <div class="filter-row">
-          <input type="search" id="search-siswa" placeholder="Cari nama atau NISN..." />
-          <select id="filter-kelas-siswa">
-            <option value="">Semua Kelas</option>
-          </select>
+          <input type="search" id="search-siswa" placeholder="Cari nama atau NISN siswa..." />
         </div>
 
         <div id="siswa-list" class="list-stack">
@@ -164,14 +166,11 @@
       <div class="card">
         <h2>Cetak Kartu Pelajar (PDF Ukuran KTP)</h2>
         <p class="helper-note">
-          Setiap 1 halaman PDF berukuran <strong>85,6 mm × 53,98 mm</strong> (standar kartu KTP/ID Card) memuat Logo SMK, Nama SMK, Foto, NISN, Nama, TTL, Alamat, dan QR Code persegi siap cetak.
+          Setiap 1 halaman PDF berukuran <strong>85,6 mm × 53,98 mm</strong> (standar kartu KTP/ID Card) memuat Logo SMK, Nama SMK, Foto, NISN, Nama, TTL, Alamat, dan QR Code persegi untuk pemakaian 3 tahun.
         </p>
 
         <div class="filter-row">
-          <select id="print-filter-kelas">
-            <option value="">Semua Kelas</option>
-          </select>
-          <input type="search" id="print-search-siswa" placeholder="Filter nama / NISN..." />
+          <input type="search" id="print-search-siswa" placeholder="Filter nama atau NISN..." />
         </div>
 
         <button id="btn-generate-pdf-bulk" class="btn btn-primary btn-block btn-lg">
@@ -232,6 +231,16 @@
 
     <!-- ==================== TAB 6: PENGATURAN & BACKUP ==================== -->
     <section id="tab-pengaturan" class="tab-section">
+      <div class="card">
+        <h2>Pembaruan Aplikasi & Cache</h2>
+        <p class="helper-note">
+          Versi terpasang saat ini: <strong id="settings-version-text">v1.4</strong>. Tekan tombol di bawah saat online untuk membersihkan cache dan mengunduh pembaruan terbaru dari GitHub tanpa menghapus data siswa.
+        </p>
+        <button id="btn-settings-refresh" class="btn btn-primary btn-block">
+          ↻ Bersihkan Cache & Update Versi
+        </button>
+      </div>
+
       <div class="card">
         <h2>Identitas & Logo Sekolah</h2>
         <div class="logo-setting-box">
@@ -324,16 +333,6 @@
           <label for="input-nama">Nama Lengkap</label>
           <input type="text" id="input-nama" required placeholder="Nama lengkap siswa" />
         </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label for="input-kelas">Kelas</label>
-            <input type="text" id="input-kelas" placeholder="Contoh: XI TKJ 1" />
-          </div>
-          <div class="form-group">
-            <label for="input-wa">No. WA Orang Tua</label>
-            <input type="tel" id="input-wa" placeholder="081234567890" />
-          </div>
-        </div>
         <div class="form-group">
           <label for="input-ttl">Tempat, Tanggal Lahir (TTL)</label>
           <input type="text" id="input-ttl" required placeholder="Karanganyar, 15 Agustus 2008" />
@@ -341,6 +340,10 @@
         <div class="form-group">
           <label for="input-alamat">Alamat</label>
           <textarea id="input-alamat" rows="2" required placeholder="Alamat lengkap siswa"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="input-wa">No. WA Orang Tua (Opsional)</label>
+          <input type="tel" id="input-wa" placeholder="081234567890" />
         </div>
         <div class="form-group">
           <label for="input-foto-single">Pas Foto Siswa (Opsional)</label>
