@@ -1,7 +1,10 @@
 /* ==========================================================================
    ScanMuh5 - SMK Muhammadiyah 5 Karanganyar
-   Offline-First PWA (IndexedDB + ZIP/Excel + QR + KTP PDF + WA + GAS Sync)
+   Offline-First PWA (Data Dummy Auto-Restore di github.io + Force Update)
    ========================================================================== */
+
+const APP_VERSION = "v1.4";
+const AUTO_SEED_DUMMY_ON_GITHUB = true; // Ubah ke false jika sudah dipakai produksi penuh
 
 const DB_NAME = "ScanMuh5_DB";
 const DB_VERSION = 1;
@@ -92,6 +95,192 @@ async function seedDefaultActivities() {
   }
 }
 
+// ==================== 1B. DATA DUMMY UJICOBA ====================
+function createDummyPhotoDataURL(initials, bgHex) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 300;
+  canvas.height = 400;
+  const ctx = canvas.getContext("2d");
+
+  // Latar belakang merah/biru khas pas foto sekolah
+  ctx.fillStyle = bgHex;
+  ctx.fillRect(0, 0, 300, 400);
+
+  // Siluet bahu seragam
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(150, 395, 115, Math.PI, 0);
+  ctx.fill();
+
+  // Lingkaran kepala/inisial
+  ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+  ctx.beginPath();
+  ctx.arc(150, 165, 76, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 72px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(initials, 150, 170);
+
+  // Label kecil penanda dummy
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(0, 362, 300, 38);
+  ctx.fillStyle = "#fde68a";
+  ctx.font = "bold 18px sans-serif";
+  ctx.fillText("FOTO DUMMY", 150, 383);
+
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+async function seedDummyDataIfNeeded() {
+  const isGithubPages = window.location.hostname.endsWith("github.io");
+  const existingStudents = await dbGetAll("students");
+
+  // Muncul kembali setiap kali dibuka dari github.io, atau saat database lokal masih kosong
+  const shouldSeed =
+    (AUTO_SEED_DUMMY_ON_GITHUB && isGithubPages) || existingStudents.length === 0;
+
+  if (!shouldSeed) return;
+
+  const dummyStudents = [
+    {
+      nisn: "0081000001",
+      nama: "Ahmad Fauzi Pratama",
+      ttl: "Karanganyar, 12 Mei 2009",
+      alamat: "Jl. Lawu No. 14, Karanganyar",
+      no_wa_ortu: "081234567801",
+      foto: createDummyPhotoDataURL("AF", "#b91c1c"),
+      is_dummy: true,
+    },
+    {
+      nisn: "0081000002",
+      nama: "Siti Nurhaliza",
+      ttl: "Surakarta, 24 Agustus 2009",
+      alamat: "Tasikmadu, Karanganyar",
+      no_wa_ortu: "081234567802",
+      foto: createDummyPhotoDataURL("SN", "#1d4ed8"),
+      is_dummy: true,
+    },
+    {
+      nisn: "0081000003",
+      nama: "Bagus Setiawan",
+      ttl: "Karanganyar, 03 Januari 2009",
+      alamat: "Jaten, Karanganyar",
+      no_wa_ortu: "081234567803",
+      foto: createDummyPhotoDataURL("BS", "#b91c1c"),
+      is_dummy: true,
+    },
+    {
+      nisn: "0081000004",
+      nama: "Dewi Lestari",
+      ttl: "Sragen, 19 November 2009",
+      alamat: "Kebakkramat, Karanganyar",
+      no_wa_ortu: "081234567804",
+      foto: createDummyPhotoDataURL("DL", "#1d4ed8"),
+      is_dummy: true,
+    },
+    {
+      nisn: "0081000005",
+      nama: "Rizky Ramadhan",
+      ttl: "Karanganyar, 07 Juli 2009",
+      alamat: "Colomadu, Karanganyar",
+      no_wa_ortu: "081234567805",
+      foto: createDummyPhotoDataURL("RR", "#0f766e"),
+      is_dummy: true,
+    },
+  ];
+
+  // Kembalikan data dummy ke kondisi awal tanpa menghapus data siswa asli
+  for (const s of dummyStudents) {
+    await dbPut("students", s);
+  }
+
+  // Tambahkan contoh log hari ini agar fitur laporan & WA bisa langsung diuji
+  const today = getTodayISO();
+  const existingLogs = await dbGetAll("logs");
+  const sampleLogs = [
+    {
+      nisn: "0081000001",
+      nama_siswa: "Ahmad Fauzi Pratama",
+      activity_id: "act_kedatangan",
+      activity_nama: "Kedatangan",
+      tanggal: today,
+      waktu: "06:48:12",
+      status: "Hadir",
+    },
+    {
+      nisn: "0081000001",
+      nama_siswa: "Ahmad Fauzi Pratama",
+      activity_id: "act_duha",
+      activity_nama: "Sholat Duha",
+      tanggal: today,
+      waktu: "09:20:05",
+      status: "Hadir",
+    },
+    {
+      nisn: "0081000002",
+      nama_siswa: "Siti Nurhaliza",
+      activity_id: "act_kedatangan",
+      activity_nama: "Kedatangan",
+      tanggal: today,
+      waktu: "06:52:40",
+      status: "Hadir",
+    },
+  ];
+
+  for (const log of sampleLogs) {
+    const exists = existingLogs.some(
+      (l) =>
+        l.nisn === log.nisn &&
+        l.activity_id === log.activity_id &&
+        l.tanggal === log.tanggal
+    );
+    if (!exists) {
+      await dbPut("logs", log);
+    }
+  }
+}
+
+// ==================== 1C. TOMBOL REFRESH & CLEAR CACHE ====================
+async function forceRefreshAndUpdate() {
+  if (!navigator.onLine) {
+    alert(
+      "HP sedang offline. Hubungkan ke internet terlebih dahulu agar pembaruan versi bisa diunduh setelah cache dibersihkan."
+    );
+    return;
+  }
+
+  const ok = confirm(
+    "Bersihkan cache dan cek pembaruan versi terbaru dari GitHub?\n\nData siswa, foto, dan riwayat scan Anda tetap aman."
+  );
+  if (!ok) return;
+
+  const headerBtn = document.getElementById("btn-force-refresh");
+  if (headerBtn) headerBtn.textContent = "Memuat...";
+
+  try {
+    // 1. Hapus seluruh Cache Storage Service Worker
+    if ("caches" in window) {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map((name) => caches.delete(name)));
+    }
+
+    // 2. Lepas Service Worker lama agar versi baru langsung terpasang
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((reg) => reg.unregister()));
+    }
+  } catch (err) {
+    console.warn("Gagal membersihkan sebagian cache:", err);
+  }
+
+  // 3. Muat ulang langsung dari server (bypass HTTP cache)
+  const cleanPath = window.location.origin + window.location.pathname;
+  window.location.replace(`${cleanPath}?update=${Date.now()}`);
+}
+
 // ==================== 2. UTILITAS UMUM & AUDIO ====================
 function getTodayISO() {
   const now = new Date();
@@ -150,7 +339,6 @@ function compressImageBlob(blob, maxW = 300, maxH = 400, quality = 0.8) {
       canvas.height = maxH;
       const ctx = canvas.getContext("2d");
 
-      // Center crop agar rasio pas 3:4
       const srcRatio = img.width / img.height;
       const dstRatio = maxW / maxH;
       let sx = 0, sy = 0, sw = img.width, sh = img.height;
@@ -215,7 +403,6 @@ function initNavigation() {
     btn.addEventListener("click", async () => {
       const target = btn.dataset.tab;
 
-      // Matikan kamera jika pindah dari tab scan agar hemat baterai
       if (target !== "scan" && isCameraRunning) {
         await stopScanner();
       }
@@ -234,7 +421,6 @@ function initNavigation() {
     });
   });
 
-  // Status Online / Offline
   const badge = document.getElementById("offline-badge");
   const updateNetStatus = () => {
     if (navigator.onLine) {
@@ -357,8 +543,8 @@ async function processScanNISN(nisn) {
       ${student.foto ? `<img src="${student.foto}" alt="Foto" />` : ""}
       <div>
         <div>⚠️ SUDAH TERCATAT (${activity.nama})</div>
-        <div><strong>${student.nama}</strong> (${student.kelas || "-"})</div>
-        <small>Sudah scan pukul ${alreadyScanned.waktu}</small>
+        <div><strong>${student.nama}</strong></div>
+        <small>NISN: ${student.nisn} • Sudah scan pukul ${alreadyScanned.waktu}</small>
       </div>
     `;
     return;
@@ -368,7 +554,6 @@ async function processScanNISN(nisn) {
   await dbPut("logs", {
     nisn: student.nisn,
     nama_siswa: student.nama,
-    kelas: student.kelas || "-",
     activity_id: activity.id,
     activity_nama: activity.nama,
     tanggal: today,
@@ -384,7 +569,7 @@ async function processScanNISN(nisn) {
     ${student.foto ? `<img src="${student.foto}" alt="Foto" />` : ""}
     <div>
       <div>✅ BERHASIL - ${activity.nama.toUpperCase()}</div>
-      <div><strong>${student.nama}</strong> (${student.kelas || "-"})</div>
+      <div><strong>${student.nama}</strong></div>
       <small>NISN: ${student.nisn} • Pukul ${waktu}</small>
     </div>
   `;
@@ -411,7 +596,7 @@ async function renderTodayScans() {
       (item) => `
       <div class="item-card">
         <div class="student-meta">
-          <h4>${item.nama_siswa} <small>(${item.kelas})</small></h4>
+          <h4>${item.nama_siswa}</h4>
           <p><strong>${item.activity_nama}</strong> • Pukul ${item.waktu}</p>
         </div>
         <span class="badge-info">${item.nisn}</span>
@@ -428,24 +613,11 @@ async function renderSiswaList() {
 
   document.getElementById("total-siswa-badge").textContent = `${students.length} Siswa`;
 
-  // Populate dropdown filter kelas
-  const kelasSet = [...new Set(students.map((s) => s.kelas).filter(Boolean))].sort();
-  const filterSelect = document.getElementById("filter-kelas-siswa");
-  const prevKelas = filterSelect.value;
-  filterSelect.innerHTML =
-    `<option value="">Semua Kelas</option>` +
-    kelasSet.map((k) => `<option value="${k}">${k}</option>`).join("");
-  if (kelasSet.includes(prevKelas)) filterSelect.value = prevKelas;
-
   const query = document.getElementById("search-siswa").value.toLowerCase().trim();
-  const selectedKelas = filterSelect.value;
-
-  const filtered = students.filter((s) => {
-    const matchText =
-      s.nama.toLowerCase().includes(query) || String(s.nisn).toLowerCase().includes(query);
-    const matchKelas = !selectedKelas || s.kelas === selectedKelas;
-    return matchText && matchKelas;
-  });
+  const filtered = students.filter(
+    (s) =>
+      s.nama.toLowerCase().includes(query) || String(s.nisn).toLowerCase().includes(query)
+  );
 
   const listEl = document.getElementById("siswa-list");
   if (filtered.length === 0) {
@@ -464,8 +636,8 @@ async function renderSiswaList() {
               : `<div class="student-avatar">NO FOTO</div>`
           }
           <div class="student-meta">
-            <h4>${s.nama}</h4>
-            <p>NISN: <strong>${s.nisn}</strong> • ${s.kelas || "Tanpa Kelas"}</p>
+            <h4>${s.nama} ${s.is_dummy ? `<span class="badge-dummy">DUMMY</span>` : ""}</h4>
+            <p>NISN: <strong>${s.nisn}</strong></p>
             <p>${s.ttl}</p>
           </div>
         </div>
@@ -484,7 +656,6 @@ function downloadExcelTemplate() {
     {
       NISN: "0081234567",
       Nama: "Ahmad Fauzi",
-      Kelas: "XI TKJ 1",
       TTL: "Karanganyar, 12 Mei 2008",
       Alamat: "Jl. Lawu No. 45, Karanganyar",
       No_WA_Ortu: "081234567890",
@@ -492,7 +663,6 @@ function downloadExcelTemplate() {
     {
       NISN: "0087654321",
       Nama: "Siti Rahmawati",
-      Kelas: "XI TKJ 1",
       TTL: "Surakarta, 20 September 2008",
       Alamat: "Tasikmadu, Karanganyar",
       No_WA_Ortu: "085612345678",
@@ -518,7 +688,6 @@ async function handleImportExcel(file) {
 
   let imported = 0;
   for (const row of rows) {
-    // Mendukung variasi kapitalisasi header kolom
     const nisn = String(row.NISN || row.nisn || "").trim();
     const nama = String(row.Nama || row.NAMA || row.nama || "").trim();
     if (!nisn || !nama) continue;
@@ -527,13 +696,13 @@ async function handleImportExcel(file) {
     await dbPut("students", {
       nisn,
       nama,
-      kelas: String(row.Kelas || row.KELAS || row.kelas || existing?.kelas || "").trim(),
       ttl: String(row.TTL || row.ttl || existing?.ttl || "-").trim(),
       alamat: String(row.Alamat || row.ALAMAT || row.alamat || existing?.alamat || "-").trim(),
       no_wa_ortu: String(
         row.No_WA_Ortu || row.WA || row.no_wa_ortu || existing?.no_wa_ortu || ""
       ).trim(),
       foto: existing?.foto || "",
+      is_dummy: false,
     });
     imported++;
   }
@@ -613,7 +782,6 @@ window.editSiswa = async function (nisn) {
   document.getElementById("input-nisn").value = s.nisn;
   document.getElementById("input-nisn").readOnly = true;
   document.getElementById("input-nama").value = s.nama;
-  document.getElementById("input-kelas").value = s.kelas || "";
   document.getElementById("input-wa").value = s.no_wa_ortu || "";
   document.getElementById("input-ttl").value = s.ttl || "";
   document.getElementById("input-alamat").value = s.alamat || "";
@@ -680,23 +848,11 @@ async function renderKartuTab() {
   const students = await dbGetAll("students");
   students.sort((a, b) => a.nama.localeCompare(b.nama));
 
-  const kelasSet = [...new Set(students.map((s) => s.kelas).filter(Boolean))].sort();
-  const kelasSelect = document.getElementById("print-filter-kelas");
-  const prevVal = kelasSelect.value;
-  kelasSelect.innerHTML =
-    `<option value="">Semua Kelas (${students.length})</option>` +
-    kelasSet.map((k) => `<option value="${k}">${k}</option>`).join("");
-  if (kelasSet.includes(prevVal)) kelasSelect.value = prevVal;
-
   const q = document.getElementById("print-search-siswa").value.toLowerCase().trim();
-  const kFilter = kelasSelect.value;
-
-  const filtered = students.filter((s) => {
-    const matchText =
-      s.nama.toLowerCase().includes(q) || String(s.nisn).toLowerCase().includes(q);
-    const matchKelas = !kFilter || s.kelas === kFilter;
-    return matchText && matchKelas;
-  });
+  const filtered = students.filter(
+    (s) =>
+      s.nama.toLowerCase().includes(q) || String(s.nisn).toLowerCase().includes(q)
+  );
 
   const listEl = document.getElementById("card-preview-list");
   if (filtered.length === 0) {
@@ -715,8 +871,8 @@ async function renderKartuTab() {
               : `<div class="student-avatar">NO FOTO</div>`
           }
           <div class="student-meta">
-            <h4>${s.nama}</h4>
-            <p>NISN: ${s.nisn} • ${s.kelas || "-"}</p>
+            <h4>${s.nama} ${s.is_dummy ? `<span class="badge-dummy">DUMMY</span>` : ""}</h4>
+            <p>NISN: ${s.nisn}</p>
           </div>
         </div>
         <button class="btn btn-secondary btn-sm" onclick="downloadSingleCardPDF('${s.nisn}')">
@@ -729,23 +885,18 @@ async function renderKartuTab() {
 }
 
 async function drawStudentCardPage(doc, student, logoDataUrl) {
-  // Ukuran standar KTP / ID Card: 85.6 mm x 53.98 mm
   const W = 85.6;
   const H = 53.98;
 
-  // Latar belakang putih bersih
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, W, H, "F");
 
-  // Header Hijau Muhammadiyah
   doc.setFillColor(6, 95, 70);
   doc.rect(0, 0, W, 11.5, "F");
 
-  // Garis aksen emas
   doc.setFillColor(245, 158, 11);
   doc.rect(0, 11.5, W, 0.7, "F");
 
-  // Logo Sekolah
   if (logoDataUrl) {
     try {
       doc.addImage(logoDataUrl, "PNG", 2.5, 1.5, 8.5, 8.5);
@@ -759,7 +910,6 @@ async function drawStudentCardPage(doc, student, logoDataUrl) {
     doc.text("M5", 6.75, 6.5, { align: "center" });
   }
 
-  // Judul Kartu & Nama SMK
   doc.setTextColor(253, 230, 138);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6);
@@ -769,7 +919,6 @@ async function drawStudentCardPage(doc, student, logoDataUrl) {
   doc.setFontSize(7.4);
   doc.text("SMK MUHAMMADIYAH 5 KARANGANYAR", 12.8, 9.0);
 
-  // Pas Foto Siswa (Rasio 3:4 -> 18mm x 24mm)
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.3);
   if (student.foto) {
@@ -783,7 +932,6 @@ async function drawStudentCardPage(doc, student, logoDataUrl) {
     doc.text("FOTO 3x4", 12, 26.5, { align: "center" });
   }
 
-  // Kotak NISN di bawah foto agar mudah dibaca
   doc.setFillColor(236, 253, 245);
   doc.setDrawColor(167, 243, 208);
   doc.rect(3, 39.2, 18, 5.5, "FD");
@@ -792,7 +940,6 @@ async function drawStudentCardPage(doc, student, logoDataUrl) {
   doc.setFontSize(6);
   doc.text(String(student.nisn), 12, 42.7, { align: "center" });
 
-  // Biodata Siswa (Tengah: x = 23 s.d. 60.5)
   let yCursor = 16.8;
   doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
@@ -816,7 +963,6 @@ async function drawStudentCardPage(doc, student, logoDataUrl) {
     .slice(0, 3);
   doc.text(alamatLines, 23, yCursor);
 
-  // QR Code Persegi (Kanan: Quiet zone putih + QR 20x20 mm)
   const qrDataUrl = await generateQRDataURL(student.nisn, 260);
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(203, 213, 225);
@@ -830,7 +976,6 @@ async function drawStudentCardPage(doc, student, logoDataUrl) {
   doc.setFontSize(5);
   doc.text("SCAN KEHADIRAN", 72.3, 38.2, { align: "center" });
 
-  // Footer Kartu
   doc.setFillColor(241, 245, 249);
   doc.rect(0, 48.8, W, 5.18, "F");
   doc.setTextColor(71, 85, 105);
@@ -894,7 +1039,7 @@ async function initLaporanTab() {
   select.innerHTML =
     `<option value="">-- Pilih Nama Siswa --</option>` +
     students
-      .map((s) => `<option value="${s.nisn}">${s.nama} (${s.kelas || "-"} - ${s.nisn})</option>`)
+      .map((s) => `<option value="${s.nisn}">${s.nama} (${s.nisn})</option>`)
       .join("");
 
   if (prevVal && students.some((s) => s.nisn === prevVal)) {
@@ -905,7 +1050,7 @@ async function initLaporanTab() {
   const endInput = document.getElementById("laporan-tgl-selesai");
   if (!startInput.value) {
     const today = getTodayISO();
-    startInput.value = today.slice(0, 8) + "01"; // Tanggal 1 bulan berjalan
+    startInput.value = today.slice(0, 8) + "01";
     endInput.value = today;
   }
 
@@ -937,7 +1082,6 @@ async function renderLaporanSiswa() {
     return true;
   });
 
-  // Hitung rekap per jenis kegiatan
   const counts = {};
   filteredLogs.forEach((l) => {
     counts[l.activity_nama] = (counts[l.activity_nama] || 0) + 1;
@@ -949,7 +1093,7 @@ async function renderLaporanSiswa() {
 
   summaryBox.classList.remove("hidden");
   summaryBox.innerHTML = `
-    <div><strong>${student.nama}</strong> (${student.kelas || "-"})</div>
+    <div><strong>${student.nama}</strong></div>
     <div>NISN: ${student.nisn} | WA Ortu: ${student.no_wa_ortu || "Belum diisi"}</div>
     <hr style="margin:8px 0; border:none; border-top:1px solid #cbd5e1;" />
     <div><strong>Rekap Periode ${formatDateID(startDate)} s.d. ${formatDateID(endDate)}:</strong></div>
@@ -1016,13 +1160,11 @@ async function shareLaporanToWhatsApp() {
     `*SMK MUHAMMADIYAH 5 KARANGANYAR*\n\n` +
     `Nama : *${student.nama}*\n` +
     `NISN : ${student.nisn}\n` +
-    `Kelas : ${student.kelas || "-"}\n` +
     `Periode : ${formatDateID(startDate)} s.d. ${formatDateID(endDate)}\n\n` +
     `*Ringkasan Kehadiran Kegiatan:*\n${rekapTeks}\n\n` +
     (detailTerbaru ? `*Catatan Terbaru:*\n${detailTerbaru}\n\n` : "") +
     `_Dikirim melalui aplikasi ScanMuh5_`;
 
-  // Normalisasi nomor WA Indonesia (08xxx -> 628xxx)
   let phone = (student.no_wa_ortu || "").replace(/[^0-9]/g, "");
   if (phone.startsWith("0")) {
     phone = "62" + phone.slice(1);
@@ -1038,6 +1180,9 @@ async function shareLaporanToWhatsApp() {
 
 // ==================== 9. PENGATURAN, LOGO & BACKUP GOOGLE SHEETS ====================
 function initSettings() {
+  document.getElementById("app-version-tag").textContent = APP_VERSION;
+  document.getElementById("settings-version-text").textContent = APP_VERSION;
+
   const savedLogo = localStorage.getItem("scanmuh5_logo");
   const previewLogo = document.getElementById("preview-logo-smk");
   if (savedLogo) {
@@ -1072,7 +1217,6 @@ function initSettings() {
     alert("URL Google Apps Script tersimpan.");
   });
 
-  // Backup ke Google Sheet
   document.getElementById("btn-sync-gsheet").addEventListener("click", async () => {
     const url = localStorage.getItem("scanmuh5_gas_url") || gasInput.value.trim();
     const statusEl = document.getElementById("sync-status-text");
@@ -1093,7 +1237,6 @@ function initSettings() {
       const activities = await dbGetAll("activities");
       const logs = await dbGetAll("logs");
 
-      // Kirim data teks (tanpa foto Base64 agar tidak melebihi batas sel Google Sheets)
       const cleanStudents = students.map(({ foto, ...rest }) => ({
         ...rest,
         punya_foto: foto ? "Ya" : "Tidak",
@@ -1121,10 +1264,10 @@ function initSettings() {
     }
   });
 
-  // Export Backup JSON Lengkap (Termasuk Foto)
   document.getElementById("btn-export-json").addEventListener("click", async () => {
     const data = {
       app: "ScanMuh5",
+      version: APP_VERSION,
       date: new Date().toISOString(),
       students: await dbGetAll("students"),
       activities: await dbGetAll("activities"),
@@ -1139,7 +1282,6 @@ function initSettings() {
     URL.revokeObjectURL(url);
   });
 
-  // Import Restore JSON
   document.getElementById("input-import-json").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1165,19 +1307,28 @@ function initSettings() {
 
 // ==================== 10. EVENT LISTENERS UTAMA ====================
 document.addEventListener("DOMContentLoaded", async () => {
+  // Bersihkan parameter ?update= dari URL setelah force refresh
+  if (window.location.search.includes("update=")) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
   await openDatabase();
   await seedDefaultActivities();
+  await seedDummyDataIfNeeded();
 
   initNavigation();
   initSettings();
   await refreshScanTab();
 
-  // Register Service Worker untuk GitHub Pages (Relative Path)
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch((err) => {
       console.warn("SW registration failed:", err);
     });
   }
+
+  // Tombol Force Refresh & Clear Cache (Header & Tab Pengaturan)
+  document.getElementById("btn-force-refresh").addEventListener("click", forceRefreshAndUpdate);
+  document.getElementById("btn-settings-refresh").addEventListener("click", forceRefreshAndUpdate);
 
   // Event Tab Scan
   document.getElementById("scan-activity-select").addEventListener("change", updateActivityInfo);
@@ -1230,11 +1381,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     await dbPut("students", {
       nisn,
       nama: document.getElementById("input-nama").value.trim(),
-      kelas: document.getElementById("input-kelas").value.trim(),
-      no_wa_ortu: document.getElementById("input-wa").value.trim(),
       ttl: document.getElementById("input-ttl").value.trim(),
       alamat: document.getElementById("input-alamat").value.trim(),
+      no_wa_ortu: document.getElementById("input-wa").value.trim(),
       foto: fotoData,
+      is_dummy: existing?.is_dummy || false,
     });
 
     document.getElementById("modal-siswa").classList.add("hidden");
@@ -1251,7 +1402,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     e.target.value = "";
   });
   document.getElementById("search-siswa").addEventListener("input", renderSiswaList);
-  document.getElementById("filter-kelas-siswa").addEventListener("change", renderSiswaList);
 
   // Event Tab Kegiatan
   document.getElementById("form-kegiatan").addEventListener("submit", async (e) => {
@@ -1279,23 +1429,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // Event Tab Kartu Pelajar PDF
-  document.getElementById("print-filter-kelas").addEventListener("change", renderKartuTab);
   document.getElementById("print-search-siswa").addEventListener("input", renderKartuTab);
   document.getElementById("btn-generate-pdf-bulk").addEventListener("click", async () => {
     const students = await dbGetAll("students");
     students.sort((a, b) => a.nama.localeCompare(b.nama));
-    const kFilter = document.getElementById("print-filter-kelas").value;
     const q = document.getElementById("print-search-siswa").value.toLowerCase().trim();
 
-    const filtered = students.filter((s) => {
-      const matchText =
-        s.nama.toLowerCase().includes(q) || String(s.nisn).toLowerCase().includes(q);
-      const matchKelas = !kFilter || s.kelas === kFilter;
-      return matchText && matchKelas;
-    });
+    const filtered = students.filter(
+      (s) =>
+        s.nama.toLowerCase().includes(q) || String(s.nisn).toLowerCase().includes(q)
+    );
 
-    const suffix = kFilter ? kFilter.replace(/\s+/g, "_") : "Semua_Siswa";
-    await generatePDFForStudents(filtered, `Kartu_Pelajar_ScanMuh5_${suffix}.pdf`);
+    await generatePDFForStudents(filtered, "Kartu_Pelajar_ScanMuh5.pdf");
   });
 
   // Event Tab Laporan
