@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#065f46" />
+  <meta name="description" content="Aplikasi Absensi & Kegiatan Siswa Berbasis QR Code - SMK Muhammadiyah 5 Karanganyar" />
+  <title>ScanMuh5 - SMK Muhammadiyah 5 Karanganyar</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./style.css" />
+
+  <!-- Library Pendukung (Otomatis di-cache Service Worker untuk mode 100% Offline) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <!-- Header Utama -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-badge">M5</div>
+      <div>
+        <h1>ScanMuh5</h1>
+        <p>SMK Muhammadiyah 5 Karanganyar</p>
+      </div>
+    </div>
+    <span id="offline-badge" class="status-pill online">Online</span>
+  </header>
+
+  <!-- Konten Utama SPA -->
+  <main class="app-container">
+
+    <!-- ==================== TAB 1: SCAN QR ==================== -->
+    <section id="tab-scan" class="tab-section active">
+      <div class="card">
+        <div class="card-header">
+          <h2>Pemindai Kegiatan Siswa</h2>
+          <span id="today-scan-count" class="badge-info">Hari ini: 0</span>
+        </div>
+
+        <div class="form-group">
+          <label for="scan-activity-select">Pilih Kegiatan Aktif</label>
+          <select id="scan-activity-select" class="input-lg"></select>
+          <small id="scan-activity-info" class="text-muted"></small>
+        </div>
+
+        <div class="camera-wrapper">
+          <div id="qr-reader"></div>
+          <button id="btn-toggle-camera" class="btn btn-primary btn-block btn-lg">
+            Aktifkan Kamera Scan
+          </button>
+        </div>
+
+        <!-- Hasil Scan Terakhir -->
+        <div id="scan-feedback" class="scan-feedback hidden"></div>
+
+        <!-- Input Manual NISN (Cadangan jika kartu rusak/silau) -->
+        <div class="manual-scan-box">
+          <label for="manual-nisn-input">Input Manual NISN (Cadangan)</label>
+          <div class="input-row">
+            <input type="text" id="manual-nisn-input" placeholder="Ketik NISN siswa..." inputmode="numeric" />
+            <button id="btn-manual-scan" class="btn btn-secondary">Catat</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Riwayat Scan Hari Ini (Terbaru)</h3>
+        <div id="recent-scans-list" class="list-stack">
+          <p class="empty-state">Belum ada aktivitas scan hari ini.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: DATA SISWA ==================== -->
+    <section id="tab-siswa" class="tab-section">
+      <div class="card">
+        <div class="card-header">
+          <h2>Data Siswa</h2>
+          <span id="total-siswa-badge" class="badge-info">0 Siswa</span>
+        </div>
+
+        <div class="action-grid">
+          <button id="btn-add-siswa" class="btn btn-primary">+ Tambah Siswa</button>
+          <button id="btn-download-template" class="btn btn-outline">Template Excel</button>
+
+          <label class="btn btn-secondary file-btn">
+            Import Excel (.xlsx)
+            <input type="file" id="input-import-excel" accept=".xlsx,.xls,.csv" hidden />
+          </label>
+
+          <label class="btn btn-amber file-btn">
+            Upload Foto (.zip)
+            <input type="file" id="input-import-zip" accept=".zip" hidden />
+          </label>
+        </div>
+
+        <p class="helper-note">
+          <strong>Format Foto ZIP:</strong> Masukkan seluruh pas foto ke dalam 1 file <code>.zip</code> dengan nama file sesuai <strong>NISN</strong> siswa (contoh: <code>0081234567.jpg</code>). Foto otomatis dikompres agar ringan.
+        </p>
+
+        <!-- Progress Bar Import -->
+        <div id="import-progress-box" class="progress-box hidden">
+          <div id="import-progress-text" class="progress-label">Memproses data...</div>
+          <div class="progress-track">
+            <div id="import-progress-bar" class="progress-fill" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <input type="search" id="search-siswa" placeholder="Cari nama atau NISN..." />
+          <select id="filter-kelas-siswa">
+            <option value="">Semua Kelas</option>
+          </select>
+        </div>
+
+        <div id="siswa-list" class="list-stack">
+          <p class="empty-state">Belum ada data siswa. Silakan tambah manual atau import Excel.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: KEGIATAN ==================== -->
+    <section id="tab-kegiatan" class="tab-section">
+      <div class="card">
+        <h2 id="form-kegiatan-title">Kelola Kegiatan Barcode</h2>
+        <form id="form-kegiatan" class="form-stack">
+          <input type="hidden" id="kegiatan-id" />
+          <div class="form-group">
+            <label for="kegiatan-nama">Nama Kegiatan</label>
+            <input type="text" id="kegiatan-nama" placeholder="Contoh: Kedatangan, Sholat Duha, Pulang" required />
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="kegiatan-mulai">Jam Mulai (Opsional)</label>
+              <input type="time" id="kegiatan-mulai" />
+            </div>
+            <div class="form-group">
+              <label for="kegiatan-selesai">Jam Selesai (Opsional)</label>
+              <input type="time" id="kegiatan-selesai" />
+            </div>
+          </div>
+          <div class="btn-row">
+            <button type="submit" class="btn btn-primary">Simpan Kegiatan</button>
+            <button type="button" id="btn-reset-kegiatan" class="btn btn-outline hidden">Batal Edit</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Daftar Kegiatan Terdaftar</h3>
+        <div id="kegiatan-list" class="list-stack"></div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: KARTU PELAJAR PDF ==================== -->
+    <section id="tab-kartu" class="tab-section">
+      <div class="card">
+        <h2>Cetak Kartu Pelajar (PDF Ukuran KTP)</h2>
+        <p class="helper-note">
+          Setiap 1 halaman PDF berukuran <strong>85,6 mm × 53,98 mm</strong> (standar kartu KTP/ID Card) memuat Logo SMK, Nama SMK, Foto, NISN, Nama, TTL, Alamat, dan QR Code persegi siap cetak.
+        </p>
+
+        <div class="filter-row">
+          <select id="print-filter-kelas">
+            <option value="">Semua Kelas</option>
+          </select>
+          <input type="search" id="print-search-siswa" placeholder="Filter nama / NISN..." />
+        </div>
+
+        <button id="btn-generate-pdf-bulk" class="btn btn-primary btn-block btn-lg">
+          Download PDF Kartu Pelajar (1 Halaman / Siswa)
+        </button>
+
+        <div id="pdf-progress-box" class="progress-box hidden">
+          <div id="pdf-progress-text" class="progress-label">Menyiapkan PDF...</div>
+          <div class="progress-track">
+            <div id="pdf-progress-bar" class="progress-fill" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Pratinjau Kartu Siswa</h3>
+        <div id="card-preview-list" class="list-stack">
+          <p class="empty-state">Data siswa akan tampil di sini untuk pratinjau atau cetak satuan.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: LAPORAN & WA ORTU ==================== -->
+    <section id="tab-laporan" class="tab-section">
+      <div class="card">
+        <h2>Laporan Kegiatan Per Siswa</h2>
+
+        <div class="form-group">
+          <label for="laporan-siswa-select">Pilih Siswa</label>
+          <select id="laporan-siswa-select" class="input-lg"></select>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="laporan-tgl-mulai">Dari Tanggal</label>
+            <input type="date" id="laporan-tgl-mulai" />
+          </div>
+          <div class="form-group">
+            <label for="laporan-tgl-selesai">Sampai Tanggal</label>
+            <input type="date" id="laporan-tgl-selesai" />
+          </div>
+        </div>
+
+        <div id="laporan-summary-box" class="summary-panel hidden"></div>
+
+        <button id="btn-share-wa" class="btn btn-whatsapp btn-block btn-lg" disabled>
+          Kirim Laporan ke WhatsApp Orang Tua
+        </button>
+      </div>
+
+      <div class="card">
+        <h3>Detail Riwayat Aktivitas</h3>
+        <div id="laporan-history-list" class="list-stack">
+          <p class="empty-state">Pilih siswa di atas untuk melihat rincian kegiatan.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 6: PENGATURAN & BACKUP ==================== -->
+    <section id="tab-pengaturan" class="tab-section">
+      <div class="card">
+        <h2>Identitas & Logo Sekolah</h2>
+        <div class="logo-setting-box">
+          <img id="preview-logo-smk" alt="Logo SMK" class="logo-preview hidden" />
+          <div class="logo-actions">
+            <label class="btn btn-secondary file-btn">
+              Upload Logo SMK
+              <input type="file" id="input-logo-smk" accept="image/*" hidden />
+            </label>
+            <button id="btn-hapus-logo" class="btn btn-outline">Reset Logo</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Backup ke Google Sheets</h2>
+        <p class="helper-note">
+          Aplikasi berjalan 100% offline. Saat terhubung internet, tekan tombol backup di bawah untuk mengirim data siswa, daftar kegiatan, dan seluruh riwayat scan ke Google Sheet sekolah.
+        </p>
+        <div class="form-group">
+          <label for="input-gas-url">URL Web App Google Apps Script</label>
+          <input type="url" id="input-gas-url" placeholder="https://script.google.com/macros/s/.../exec" />
+        </div>
+        <div class="btn-row">
+          <button id="btn-save-gas-url" class="btn btn-outline">Simpan URL</button>
+          <button id="btn-sync-gsheet" class="btn btn-primary">Backup ke Google Sheet</button>
+        </div>
+        <p id="sync-status-text" class="status-note"></p>
+      </div>
+
+      <div class="card">
+        <h2>Cadangan File Offline (Termasuk Foto)</h2>
+        <p class="helper-note">
+          Simpan file cadangan penuh ke penyimpanan HP agar data beserta seluruh foto siswa aman meskipun browser dibersihkan.
+        </p>
+        <div class="btn-row">
+          <button id="btn-export-json" class="btn btn-secondary">Download Backup Lengkap (.json)</button>
+          <label class="btn btn-outline file-btn">
+            Pulihkan Backup (.json)
+            <input type="file" id="input-import-json" accept=".json" hidden />
+          </label>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Navigasi Bawah Mobile -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-tab="scan">
+      <span class="nav-icon">📷</span>
+      <span>Scan</span>
+    </button>
+    <button class="nav-item" data-tab="siswa">
+      <span class="nav-icon">👨‍🎓</span>
+      <span>Siswa</span>
+    </button>
+    <button class="nav-item" data-tab="kegiatan">
+      <span class="nav-icon">📋</span>
+      <span>Kegiatan</span>
+    </button>
+    <button class="nav-item" data-tab="kartu">
+      <span class="nav-icon">🪪</span>
+      <span>Kartu</span>
+    </button>
+    <button class="nav-item" data-tab="laporan">
+      <span class="nav-icon">📊</span>
+      <span>Laporan</span>
+    </button>
+    <button class="nav-item" data-tab="pengaturan">
+      <span class="nav-icon">⚙️</span>
+      <span>Backup</span>
+    </button>
+  </nav>
+
+  <!-- Modal Tambah / Edit Siswa -->
+  <div id="modal-siswa" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-siswa-title">Tambah Data Siswa</h3>
+        <button id="btn-close-modal-siswa" class="btn-icon">&times;</button>
+      </div>
+      <form id="form-siswa" class="form-stack">
+        <input type="hidden" id="siswa-edit-mode" value="add" />
+        <div class="form-group">
+          <label for="input-nisn">NISN (Wajib & Unik)</label>
+          <input type="text" id="input-nisn" required inputmode="numeric" placeholder="Contoh: 0081234567" />
+        </div>
+        <div class="form-group">
+          <label for="input-nama">Nama Lengkap</label>
+          <input type="text" id="input-nama" required placeholder="Nama lengkap siswa" />
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="input-kelas">Kelas</label>
+            <input type="text" id="input-kelas" placeholder="Contoh: XI TKJ 1" />
+          </div>
+          <div class="form-group">
+            <label for="input-wa">No. WA Orang Tua</label>
+            <input type="tel" id="input-wa" placeholder="081234567890" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="input-ttl">Tempat, Tanggal Lahir (TTL)</label>
+          <input type="text" id="input-ttl" required placeholder="Karanganyar, 15 Agustus 2008" />
+        </div>
+        <div class="form-group">
+          <label for="input-alamat">Alamat</label>
+          <textarea id="input-alamat" rows="2" required placeholder="Alamat lengkap siswa"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="input-foto-single">Pas Foto Siswa (Opsional)</label>
+          <input type="file" id="input-foto-single" accept="image/*" />
+          <img id="preview-foto-single" class="photo-thumb-preview hidden" alt="Preview Foto" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Simpan Data Siswa</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
